@@ -1,0 +1,24 @@
+# =========================================================================
+# Microservice Module Localized .gitignore Baseline
+# =========================================================================
+
+# Ignore all local compiled binary output targets completely
+target/
+**/target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Ignore AI background automation trackers and logs locally
+.agents/
+.claude/
+.github/
+.cline/
+.roo/
+*.log
+
+# Ignore IDE specific parameters
+.idea/
+.vscode/
+*.swp
