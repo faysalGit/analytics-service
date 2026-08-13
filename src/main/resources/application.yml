@@ -1,0 +1,59 @@
+server:
+  port: 8088
+  shutdown: graceful
+
+spring:
+  application:
+    name: analytics-service
+  
+  cloud:
+    azure:
+      keyvault:
+        secret:
+          property-sources:
+            - name: kv-payment-platform-secrets
+              endpoint: https://azure.net
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/platform_analytics_db
+    username: ${DATABASE_USER}
+    password: ${DATABASE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate.format_sql: false
+      hibernate.jdbc.batch_size: 25
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: analytics-service-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.payment.platform.*"
+        spring.json.value.default.type: "java.util.LinkedHashMap"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - [%X{X-Correlation-ID}] - %msg%n"
+  level:
+    root: INFO
+    com.payment.platform.analytics: DEBUG

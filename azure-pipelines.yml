@@ -1,0 +1,80 @@
+trigger:
+  batch: true
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  azureSubscription: 'sc-payment-platform-service-connection'
+  azureContainerRegistry: 'acrpaymentplatformprod.azurecr.io'
+  aksResourceGroup: 'rg-payment-platform-prod'
+  aksClusterName: 'aks-payment-cluster-prod'
+  imageRepository: 'analytics-service'
+  tag: '$(Build.BuildId)'
+
+stages:
+  # =========================================================================
+  # Stage 1: Continuous Integration, Code Packaging & Containerization Loop
+  # =========================================================================
+  - stage: BuildAndPackage
+    displayName: 'CI Phase: Compile and Containerize'
+    jobs:
+      - job: BuildCode
+        displayName: 'Execute Verification and Push Image'
+        steps:
+          - task: Maven@4
+            displayName: 'Compile, Test and Package Application Artifact'
+            inputs:
+              mavenPomFile: 'analytics-service/pom.xml'
+              goals: 'clean package'
+              options: '-B -DskipTests=false'
+              publishJUnitResults: true
+              testResultsFiles: '**/surefire-reports/TEST-*.xml'
+
+          - task: Docker@2
+            displayName: 'Build and Publish Image to ACR'
+            inputs:
+              containerRegistry: '$(azureSubscription)'
+              repository: '$(imageRepository)'
+              command: 'buildAndPush'
+              Dockerfile: 'analytics-service/Dockerfile'
+              tags: |
+                $(tag)
+                latest
+
+  # =========================================================================
+  # Stage 2: Continuous Deployment & Kubernetes Orchestration Loop
+  # =========================================================================
+  - stage: DeployToProduction
+    displayName: 'CD Phase: Rolling Blue-Green Cluster Deployment'
+    dependsOn: BuildAndPackage
+    condition: succeeded()
+    jobs:
+      - deployment: DeployClusterResources
+        displayName: 'Execute Kubernetes Manifest Migrations'
+        environment: 'Production-Mesh'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: KubernetesManifest@1
+                  displayName: 'Initialize Azure Kubernetes Cluster Context'
+                  inputs:
+                    action: 'bake'
+                    azureSubscriptionConnection: '$(azureSubscription)'
+                    azureResourceGroup: '$(aksResourceGroup)'
+                    kubernetesCluster: '$(aksClusterName)'
+                    manifests: 'analytics-service/k8s/*.yml'
+                    imageToConsider: '$(azureContainerRegistry)/$(imageRepository):$(tag)'
+
+                - task: KubernetesManifest@1
+                  displayName: 'Deploy Manifest Frameworks to AKS Mesh'
+                  inputs:
+                    action: 'deploy'
+                    azureSubscriptionConnection: '$(azureSubscription)'
+                    azureResourceGroup: '$(aksResourceGroup)'
+                    kubernetesCluster: '$(aksClusterName)'
+                    containers: '$(azureContainerRegistry)/$(imageRepository):$(tag)'

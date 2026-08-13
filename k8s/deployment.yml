@@ -1,0 +1,88 @@
+# =========================================================================
+# Application Workload Pod Replica Specification
+# =========================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-service-deployment
+  namespace: default
+  labels:
+    app: analytics-service
+    tier: backend
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: analytics-service
+  template:
+    metadata:
+      labels:
+        app: analytics-service
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: analytics-service-app
+          image: acrpaymentplatformprod.azurecr.io/analytics-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8088
+              name: http-web
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "prod"
+            - name: SPRING_CLOUD_AZURE_KEYVAULT_SECRET_ENDPOINT
+              value: "https://azure.net"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "250m"
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8088
+            failureThreshold: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8088
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8088
+            initialDelaySeconds: 10
+            periodSeconds: 15
+
+---
+# =========================================================================
+# Internal Network Cluster Service Load Balancer
+# =========================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: analytics-service-svc
+  namespace: default
+  labels:
+    app: analytics-service
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8088
+      targetPort: 8088
+      protocol: TCP
+      name: http-routing
+  selector:
+    app: analytics-service
